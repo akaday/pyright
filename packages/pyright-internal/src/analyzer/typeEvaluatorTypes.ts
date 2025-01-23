@@ -33,9 +33,10 @@ import { AnalyzerFileInfo } from './analyzerFileInfo';
 import { CodeFlowReferenceExpressionNode, FlowNode } from './codeFlowTypes';
 import { ConstraintTracker } from './constraintTracker';
 import { Declaration } from './declaration';
-import * as DeclarationUtils from './declarationUtils';
+import { ResolvedAliasInfo } from './declarationUtils';
 import { SymbolWithScope } from './scope';
 import { Symbol, SynthesizedTypeInfo } from './symbol';
+import { SpeculativeModeOptions } from './typeCacheUtils';
 import { PrintTypeFlags } from './typePrinter';
 import {
     AnyType,
@@ -199,6 +200,26 @@ export const enum EvalFlags {
         NoFinal |
         NoSpecialize |
         IsinstanceArg,
+}
+
+// Types whose definitions are prefetched and cached by the type evaluator
+export interface PrefetchedTypes {
+    noneTypeClass: Type;
+    objectClass: Type;
+    typeClass: Type;
+    unionTypeClass: Type;
+    awaitableClass: Type;
+    functionClass: Type;
+    tupleClass: Type;
+    boolClass: Type;
+    intClass: Type;
+    strClass: Type;
+    dictClass: Type;
+    moduleTypeClass: Type;
+    typedDictClass: Type;
+    typedDictPrivateClass: Type;
+    supportsKeysAndGetItemClass: Type;
+    mappingClass: Type;
 }
 
 export interface TypeResult<T extends Type = Type> {
@@ -490,6 +511,7 @@ export interface PrintTypeOptions {
 export interface DeclaredSymbolTypeInfo {
     type: Type | undefined;
     isTypeAlias?: boolean;
+    exceedsMaxDecls?: boolean;
 }
 
 export interface ResolveAliasOptions {
@@ -631,7 +653,7 @@ export interface TypeEvaluator {
     ) => Type;
 
     getExpectedType: (node: ExpressionNode) => ExpectedTypeResult | undefined;
-    verifyRaiseExceptionType: (node: ExpressionNode) => void;
+    verifyRaiseExceptionType: (node: ExpressionNode, allowNone: boolean) => void;
     verifyDeleteExpression: (node: ExpressionNode) => void;
     validateOverloadedArgTypes: (
         errorNode: ExpressionNode,
@@ -664,7 +686,7 @@ export interface TypeEvaluator {
         declaration: Declaration,
         resolveLocalNames: boolean,
         options?: ResolveAliasOptions
-    ) => DeclarationUtils.ResolvedAliasInfo | undefined;
+    ) => ResolvedAliasInfo | undefined;
     getTypeOfIterable: (
         typeResult: TypeResult,
         isAsync: boolean,
@@ -677,7 +699,7 @@ export interface TypeEvaluator {
         errorNode: ExpressionNode,
         emitNotIterableError?: boolean
     ) => TypeResult | undefined;
-    getGetterTypeFromProperty: (propertyClass: ClassType, inferTypeIfNeeded: boolean) => Type | undefined;
+    getGetterTypeFromProperty: (propertyClass: ClassType) => Type | undefined;
     getTypeOfArg: (arg: Arg, inferenceContext: InferenceContext | undefined) => TypeResult;
     convertNodeToArg: (node: ArgumentNode) => ArgWithExpression;
     buildTupleTypesList: (entryTypeResults: TypeResult[], stripLiterals: boolean) => TupleTypeArg[];
@@ -722,6 +744,7 @@ export interface TypeEvaluator {
         classType: ClassType,
         memberName: string,
         selfType?: ClassType | TypeVarType | undefined,
+        errorNode?: ExpressionNode | undefined,
         diag?: DiagnosticAddendum,
         recursionCount?: number
     ) => FunctionType | OverloadedType | undefined;
@@ -822,7 +845,11 @@ export interface TypeEvaluator {
 
     getTypeCacheEntryCount: () => number;
     disposeEvaluator: () => void;
-    useSpeculativeMode: <T>(speculativeNode: ParseNode | undefined, callback: () => T) => T;
+    useSpeculativeMode: <T>(
+        speculativeNode: ParseNode | undefined,
+        callback: () => T,
+        options?: SpeculativeModeOptions
+    ) => T;
     isSpeculativeModeInUse: (node: ParseNode | undefined) => boolean;
     setTypeResultForNode: (node: ParseNode, typeResult: TypeResult, flags?: EvalFlags) => void;
 

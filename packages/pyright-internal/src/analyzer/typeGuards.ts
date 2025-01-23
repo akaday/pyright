@@ -1249,20 +1249,15 @@ function narrowTypeForInstanceOrSubclassInternal(
         if (!isInstanceCheck) {
             const isTypeInstance = isClassInstance(subtype) && ClassType.isBuiltIn(subtype, 'type');
 
+            // Handle metaclass instances specially.
             if (isMetaclassInstance(subtype) && !isTypeInstance) {
-                // Handle metaclass instances specially.
                 adjFilterTypes = filterTypes.map((filterType) => convertToInstantiable(filterType));
             } else {
-                const convSubtype = convertToInstance(subtype);
+                adjSubtype = convertToInstance(subtype);
 
-                // Handle type[Any] specially for this case.
-                if (isClassInstance(subtype) && ClassType.isBuiltIn(subtype, 'type') && isAnyOrUnknown(convSubtype)) {
-                    adjSubtype = convertToInstance(evaluator.getObjectType());
-                } else {
-                    adjSubtype = convSubtype;
+                if (!isAnyOrUnknown(subtype) || isPositiveTest) {
+                    resultRequiresAdj = true;
                 }
-
-                resultRequiresAdj = true;
             }
         }
 
@@ -1276,7 +1271,18 @@ function narrowTypeForInstanceOrSubclassInternal(
             errorNode
         );
 
-        return resultRequiresAdj ? convertToInstantiable(narrowedResult) : narrowedResult;
+        if (!resultRequiresAdj) {
+            return narrowedResult;
+        }
+
+        if (isAnyOrUnknown(narrowedResult)) {
+            const typeClass = evaluator.getTypeClassType();
+            if (typeClass) {
+                return ClassType.specialize(ClassType.cloneAsInstance(typeClass), [narrowedResult]);
+            }
+        }
+
+        return convertToInstantiable(narrowedResult);
     });
 
     return result;
@@ -2060,7 +2066,7 @@ export function getElementTypeForContainerNarrowing(containerType: Type) {
 export function narrowTypeForContainerElementType(evaluator: TypeEvaluator, referenceType: Type, elementType: Type) {
     return evaluator.mapSubtypesExpandTypeVars(referenceType, /* options */ undefined, (referenceSubtype) => {
         return mapSubtypes(elementType, (elementSubtype) => {
-            if (isAnyOrUnknown(referenceSubtype)) {
+            if (isAnyOrUnknown(elementSubtype)) {
                 return referenceSubtype;
             }
 
@@ -2332,7 +2338,7 @@ function narrowTypeForTypeIs(evaluator: TypeEvaluator, type: Type, classType: Cl
                 if (isPositiveTest) {
                     if (matches) {
                         if (ClassType.isSameGenericClass(ClassType.cloneAsInstantiable(subtype), classType)) {
-                            return addConditionToType(subtype, classType.props?.condition);
+                            return addConditionToType(subtype, getTypeCondition(classType));
                         }
 
                         return addConditionToType(ClassType.cloneAsInstance(classType), subtype.props?.condition);
@@ -2354,7 +2360,9 @@ function narrowTypeForTypeIs(evaluator: TypeEvaluator, type: Type, classType: Cl
                     return subtype;
                 }
             } else if (isAnyOrUnknown(subtype)) {
-                return isPositiveTest ? ClassType.cloneAsInstance(classType) : subtype;
+                return isPositiveTest
+                    ? ClassType.cloneAsInstance(addConditionToType(classType, getTypeCondition(subtype)))
+                    : subtype;
             }
 
             return unexpandedSubtype;
@@ -2386,7 +2394,7 @@ function narrowTypeForClassComparison(
             }
 
             if (isAnyOrUnknown(concreteSubtype)) {
-                return classType;
+                return addConditionToType(classType, getTypeCondition(concreteSubtype));
             }
 
             if (isClass(concreteSubtype)) {
@@ -2405,7 +2413,7 @@ function narrowTypeForClassComparison(
                     }
 
                     if (isSuperType) {
-                        return classType;
+                        return addConditionToType(classType, getTypeCondition(concreteSubtype));
                     }
 
                     const isSubType = ClassType.isDerivedFrom(classType, concreteSubtype);

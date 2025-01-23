@@ -113,7 +113,7 @@ test('OverloadOverlap1', () => {
 
     configOptions.diagnosticRuleSet.reportOverlappingOverload = 'error';
     analysisResults = TestUtils.typeAnalyzeSampleFiles(['overloadOverlap1.py'], configOptions);
-    TestUtils.validateResults(analysisResults, 14);
+    TestUtils.validateResults(analysisResults, 15);
 });
 
 test('TypeGuard1', () => {
@@ -520,6 +520,14 @@ test('MatchClass6', () => {
     TestUtils.validateResults(analysisResults, 0);
 });
 
+test('MatchClass7', () => {
+    const configOptions = new ConfigOptions(Uri.empty());
+
+    configOptions.defaultPythonVersion = pythonVersion3_10;
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['matchClass7.py'], configOptions);
+    TestUtils.validateResults(analysisResults, 1);
+});
+
 test('MatchValue1', () => {
     const configOptions = new ConfigOptions(Uri.empty());
 
@@ -839,6 +847,12 @@ test('Constructor32', () => {
     const analysisResults = TestUtils.typeAnalyzeSampleFiles(['constructor32.py']);
 
     TestUtils.validateResults(analysisResults, 1);
+});
+
+test('Constructor33', () => {
+    const analysisResults = TestUtils.typeAnalyzeSampleFiles(['constructor33.py']);
+
+    TestUtils.validateResults(analysisResults, 0);
 });
 
 test('ConstructorCallable1', () => {
